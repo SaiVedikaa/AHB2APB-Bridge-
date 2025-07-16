@@ -1,0 +1,121 @@
+`timescale 1ns/1ps
+
+module tb_ahb2apb;
+
+    // AHB interface signals
+    reg HCLK, HRESETn, HSELAPB, HWRITE;
+    reg [1:0] HTRANS;
+    reg [31:0] HADDR, HWDATA;
+    wire HRESP, HREADY;
+    wire [31:0] HRDATA;
+
+    // APB interface signals
+    reg [31:0] PRDATA;
+    wire PSEL, PENABLE, PWRITE;
+    wire [31:0] PADDR, PWDATA;
+
+    // Instantiate DUT
+    ahb2apb DUT(
+        .HCLK(HCLK),
+        .HRESETn(HRESETn),
+        .HSELAPB(HSELAPB),
+        .HADDR(HADDR),
+        .HWRITE(HWRITE),
+        .HTRANS(HTRANS),
+        .HWDATA(HWDATA),
+        .HRESP(HRESP),
+        .HRDATA(HRDATA),
+        .HREADY(HREADY),
+        .PRDATA(PRDATA),
+        .PSEL(PSEL),
+        .PENABLE(PENABLE),
+        .PADDR(PADDR),
+        .PWRITE(PWRITE),
+        .PWDATA(PWDATA)
+    );
+
+    // Clock generation
+    always #5 HCLK = ~HCLK;
+
+    initial begin
+        $dumpfile("ahb2apb_tb.vcd");
+        $dumpvars(0, tb_ahb2apb);
+
+        // Initialize signals
+        HCLK = 0;
+        HRESETn = 0;
+        HSELAPB = 0;
+        HADDR = 0;
+        HWRITE = 0;
+        HTRANS = 2'b00;
+        HWDATA = 0;
+        PRDATA = 0;
+
+        // Reset pulse
+        #10;
+        HRESETn = 1;
+
+        // Perform write transaction
+        ahb_write(32'h0000_00A0, 32'hABCD_1234);
+
+        // Perform read transaction (PRDATA will be set manually)
+        PRDATA = 32'h5555_AAAA;
+        ahb_read(32'h0000_00A0);
+
+        // End simulation
+        #50;
+        $display("Simulation completed.");
+        $finish;
+    end
+
+    // Task: AHB Write Transaction
+    task ahb_write(input [31:0] addr, input [31:0] data);
+        begin
+            $display("Starting AHB WRITE Transaction at time %t", $time);
+
+            wait(HREADY);
+            HSELAPB = 1'b1;
+            HADDR = addr;
+            HWRITE = 1'b1;
+            HTRANS = 2'b10;   // NON-SEQUENTIAL
+            HWDATA = data;
+
+            @(posedge HCLK);
+            wait(HREADY);
+
+            // Deactivate signals
+            HSELAPB = 1'b0;
+            HTRANS = 2'b00;
+            HADDR = 32'd0;
+            HWRITE = 1'b0;
+            HWDATA = 32'd0;
+
+            $display("Completed AHB WRITE to address %h, data = %h at time %t", addr, data, $time);
+        end
+    endtask
+
+    // Task: AHB Read Transaction
+    task ahb_read(input [31:0] addr);
+        begin
+            $display("Starting AHB READ Transaction at time %t", $time);
+
+            wait(HREADY);
+            HSELAPB = 1'b1;
+            HADDR = addr;
+            HWRITE = 1'b0;
+            HTRANS = 2'b10;  // NON-SEQUENTIAL
+
+            @(posedge HCLK);
+            wait(HREADY);
+
+            $display("Read Data Received: %h from address %h at time %t", HRDATA, addr, $time);
+
+            // Deactivate signals
+            HSELAPB = 1'b0;
+            HTRANS = 2'b00;
+            HADDR = 32'd0;
+            HWRITE = 1'b0;
+        end
+    endtask
+
+endmodule
